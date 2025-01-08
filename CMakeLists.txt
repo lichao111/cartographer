@@ -310,7 +310,7 @@ target_include_directories(${TEST_LIB} SYSTEM PRIVATE
 if (WIN32)
   target_compile_definitions(${TEST_LIB} PUBLIC -DGTEST_LINKED_AS_SHARED_LIBRARY)
 endif()
-target_link_libraries(${TEST_LIB} PUBLIC ${GMOCK_LIBRARY})
+#target_link_libraries(${TEST_LIB} PUBLIC ${GMOCK_LIBRARY})
 target_link_libraries(${TEST_LIB} PUBLIC ${PROJECT_NAME})
 set_target_properties(${TEST_LIB} PROPERTIES
   COMPILE_FLAGS ${TARGET_COMPILE_FLAGS})

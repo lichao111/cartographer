@@ -26,10 +26,10 @@ namespace sensor {
 
 struct TimedPointCloudData {
   common::Time time;
-  Eigen::Vector3f origin;
-  TimedPointCloud ranges;
+  Eigen::Vector3f origin; // 点云的原点， 即传感器的位置信息
+  TimedPointCloud ranges; // 点云数据， 即每个点的坐标信息
   // 'intensities' has to be same size as 'ranges', or empty.
-  std::vector<float> intensities;
+  std::vector<float> intensities; // 表示点云数据的强度信息
 };
 
 struct TimedPointCloudOriginData {

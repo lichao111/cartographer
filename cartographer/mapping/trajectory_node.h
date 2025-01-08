@@ -47,10 +47,11 @@ struct TrajectoryNode {
 
     // Transform to approximately gravity align the tracking frame as
     // determined by local SLAM.
-    Eigen::Quaterniond gravity_alignment;
+    Eigen::Quaterniond gravity_alignment; // 重力矫正旋转四元数
 
     // Used for loop closure in 2D: voxel filtered returns in the
     // 'gravity_alignment' frame.
+    // 体素过滤后的点云数据
     sensor::PointCloud filtered_gravity_aligned_point_cloud;
 
     // Used for loop closure in 3D.
@@ -59,6 +60,7 @@ struct TrajectoryNode {
     Eigen::VectorXf rotational_scan_matcher_histogram;
 
     // The node pose in the local SLAM frame.
+    // 相对于局部地图的位姿
     transform::Rigid3d local_pose;
   };
 

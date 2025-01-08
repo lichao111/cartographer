@@ -130,14 +130,14 @@ NodeId PoseGraph2D::AppendNode(
     const transform::Rigid3d& optimized_pose) {
   absl::MutexLock locker(&mutex_);
   AddTrajectoryIfNeeded(trajectory_id);
-  if (!CanAddWorkItemModifying(trajectory_id)) {
+  if (!CanAddWorkItemModifying(trajectory_id)) { // trajectory的状态必须是ACTIVE
     LOG(WARNING) << "AddNode was called for finished or deleted trajectory.";
   }
-  const NodeId node_id = data_.trajectory_nodes.Append(
+  const NodeId node_id = data_.trajectory_nodes.Append( // trajectory_nodes中添加一个节点
       trajectory_id, TrajectoryNode{constant_data, optimized_pose});
   ++data_.num_trajectory_nodes;
   // Test if the 'insertion_submap.back()' is one we never saw before.
-  if (data_.submap_data.SizeOfTrajectoryOrZero(trajectory_id) == 0 ||
+  if (data_.submap_data.SizeOfTrajectoryOrZero(trajectory_id) == 0 || // 进行子图的添加
       std::prev(data_.submap_data.EndOfTrajectory(trajectory_id))
               ->data.submap != insertion_submaps.back()) {
     // We grow 'data_.submap_data' as needed. This code assumes that the first
@@ -153,18 +153,20 @@ NodeId PoseGraph2D::AppendNode(
 
 NodeId PoseGraph2D::AddNode(
     std::shared_ptr<const TrajectoryNode::Data> constant_data,
-    const int trajectory_id,
-    const std::vector<std::shared_ptr<const Submap2D>>& insertion_submaps) {
+    const int trajectory_id, // 轨迹id
+    const std::vector<std::shared_ptr<const Submap2D>>& insertion_submaps) {  // 局部子图
+    // 坐标转换 Local-> Global  
   const transform::Rigid3d optimized_pose(
       GetLocalToGlobalTransform(trajectory_id) * constant_data->local_pose);
-
+  // 添加节点
   const NodeId node_id = AppendNode(constant_data, trajectory_id,
                                     insertion_submaps, optimized_pose);
   // We have to check this here, because it might have changed by the time we
   // execute the lambda.
+  // 刚刚变为finished状态时的子图， 会跟过去所有的node进行匹配
   const bool newly_finished_submap =
       insertion_submaps.front()->insertion_finished();
-  AddWorkItem([=]() LOCKS_EXCLUDED(mutex_) {
+  AddWorkItem([=]() LOCKS_EXCLUDED(mutex_) { // 匹配任务加入到县城池中
     return ComputeConstraintsForNode(node_id, insertion_submaps,
                                      newly_finished_submap);
   });
@@ -258,27 +260,30 @@ void PoseGraph2D::AddLandmarkData(int trajectory_id,
   });
 }
 
+/**
+ * 进行子图间的约束计算 也可以说成是回环检测
+ */
 void PoseGraph2D::ComputeConstraint(const NodeId& node_id,
-                                    const SubmapId& submap_id) {
+                                    const SubmapId& submap_id) { // 注意这两个不一定是来自同一个trajectory
   bool maybe_add_local_constraint = false;
   bool maybe_add_global_constraint = false;
   const TrajectoryNode::Data* constant_data;
   const Submap2D* submap;
   {
     absl::MutexLock locker(&mutex_);
-    CHECK(data_.submap_data.at(submap_id).state == SubmapState::kFinished);
+    CHECK(data_.submap_data.at(submap_id).state == SubmapState::kFinished); // submap_id必须处于finished状态
     if (!data_.submap_data.at(submap_id).submap->insertion_finished()) {
       // Uplink server only receives grids when they are finished, so skip
       // constraint search before that.
       return;
     }
 
-    const common::Time node_time = GetLatestNodeTime(node_id, submap_id);
-    const common::Time last_connection_time =
+    const common::Time node_time = GetLatestNodeTime(node_id, submap_id); // node和submap最后一次具有约束的时间
+    const common::Time last_connection_time = // node和submap最后一次连接的时间
         data_.trajectory_connectivity_state.LastConnectionTime(
             node_id.trajectory_id, submap_id.trajectory_id);
-    if (node_id.trajectory_id == submap_id.trajectory_id ||
-        node_time <
+    if (node_id.trajectory_id == submap_id.trajectory_id || // 如果node和submap属于同一个trajectory
+        node_time <  // 最近两者之间有过全局约束
             last_connection_time +
                 common::FromSeconds(
                     options_.global_constraint_search_after_n_seconds())) {
@@ -287,7 +292,7 @@ void PoseGraph2D::ComputeConstraint(const NodeId& node_id,
       // the submap's trajectory, it suffices to do a match constrained to a
       // local search window.
       maybe_add_local_constraint = true;
-    } else if (global_localization_samplers_[node_id.trajectory_id]->Pulse()) {
+    } else if (global_localization_samplers_[node_id.trajectory_id]->Pulse()) { // 被全局采样器采样到了 进行全局优化
       maybe_add_global_constraint = true;
     }
     constant_data = data_.trajectory_nodes.at(node_id).constant_data.get();
@@ -296,7 +301,7 @@ void PoseGraph2D::ComputeConstraint(const NodeId& node_id,
   }
 
   if (maybe_add_local_constraint) {
-    const transform::Rigid2d initial_relative_pose =
+    const transform::Rigid2d initial_relative_pose = // submap相对于robot的位姿
         optimization_problem_->submap_data()
             .at(submap_id)
             .global_pose.inverse() *
@@ -310,29 +315,29 @@ void PoseGraph2D::ComputeConstraint(const NodeId& node_id,
 }
 
 WorkItem::Result PoseGraph2D::ComputeConstraintsForNode(
-    const NodeId& node_id,
-    std::vector<std::shared_ptr<const Submap2D>> insertion_submaps,
-    const bool newly_finished_submap) {
-  std::vector<SubmapId> submap_ids;
-  std::vector<SubmapId> finished_submap_ids;
-  std::set<NodeId> newly_finished_submap_node_ids;
+    const NodeId& node_id, // 节点ID
+    std::vector<std::shared_ptr<const Submap2D>> insertion_submaps, // 活跃子图
+    const bool newly_finished_submap) { // 刚处于结束状态的子图
+  std::vector<SubmapId> submap_ids; // 活跃状态下的子图
+  std::vector<SubmapId> finished_submap_ids; // 完成状态下的子图
+  std::set<NodeId> newly_finished_submap_node_ids; // 刚刚完成状态下的子图
   {
     absl::MutexLock locker(&mutex_);
-    const auto& constant_data =
+    const auto& constant_data = // 节点对应的激光帧
         data_.trajectory_nodes.at(node_id).constant_data;
-    submap_ids = InitializeGlobalSubmapPoses(
+    submap_ids = InitializeGlobalSubmapPoses( // 对活跃子图进行赋值
         node_id.trajectory_id, constant_data->time, insertion_submaps);
     CHECK_EQ(submap_ids.size(), insertion_submaps.size());
-    const SubmapId matching_id = submap_ids.front();
-    const transform::Rigid2d local_pose_2d =
+    const SubmapId matching_id = submap_ids.front(); // 取活跃子图中的第一个
+    const transform::Rigid2d local_pose_2d = // 拿到节点在子图中的位姿
         transform::Project2D(constant_data->local_pose *
                              transform::Rigid3d::Rotation(
                                  constant_data->gravity_alignment.inverse()));
-    const transform::Rigid2d global_pose_2d =
+    const transform::Rigid2d global_pose_2d = // 拿到节点在全局坐标系中的位姿
         optimization_problem_->submap_data().at(matching_id).global_pose *
         constraints::ComputeSubmapPose(*insertion_submaps.front()).inverse() *
         local_pose_2d;
-    optimization_problem_->AddTrajectoryNode(
+    optimization_problem_->AddTrajectoryNode( // 在pose-graph中添加节点
         matching_id.trajectory_id,
         optimization::NodeSpec2D{constant_data->time, local_pose_2d,
                                  global_pose_2d,
@@ -347,7 +352,7 @@ WorkItem::Result PoseGraph2D::ComputeConstraintsForNode(
       const transform::Rigid2d constraint_transform =
           constraints::ComputeSubmapPose(*insertion_submaps[i]).inverse() *
           local_pose_2d;
-      data_.constraints.push_back(
+      data_.constraints.push_back( // 节点和活跃子图之间的约束
           Constraint{submap_id,
                      node_id,
                      {transform::Embed3D(constraint_transform),
@@ -360,13 +365,13 @@ WorkItem::Result PoseGraph2D::ComputeConstraintsForNode(
     // trajectories scheduled for deletion.
     // TODO(danielsievers): Add a member variable and avoid having to copy
     // them out here.
-    for (const auto& submap_id_data : data_.submap_data) {
+    for (const auto& submap_id_data : data_.submap_data) { // 找到所有finished状态的子图
       if (submap_id_data.data.state == SubmapState::kFinished) {
         CHECK_EQ(submap_id_data.data.node_ids.count(node_id), 0);
         finished_submap_ids.emplace_back(submap_id_data.id);
       }
     }
-    if (newly_finished_submap) {
+    if (newly_finished_submap) { //如果最新的子图已经完成 把状态设置为finished
       const SubmapId newly_finished_submap_id = submap_ids.front();
       InternalSubmapData& finished_submap_data =
           data_.submap_data.at(newly_finished_submap_id);
@@ -376,11 +381,11 @@ WorkItem::Result PoseGraph2D::ComputeConstraintsForNode(
     }
   }
 
-  for (const auto& submap_id : finished_submap_ids) {
+  for (const auto& submap_id : finished_submap_ids) { // 但前节点和过去已经完成的子图进行匹配， 也即回环检测(如果是纯定位 finished_submap_ids轨迹id为0)
     ComputeConstraint(node_id, submap_id);
   }
 
-  if (newly_finished_submap) {
+  if (newly_finished_submap) { // 所有节点与刚刚完成的子图进行约束
     const SubmapId newly_finished_submap_id = submap_ids.front();
     // We have a new completed submap, so we look into adding constraints for
     // old nodes.
@@ -393,7 +398,7 @@ WorkItem::Result PoseGraph2D::ComputeConstraintsForNode(
   }
   constraint_builder_.NotifyEndOfNode();
   absl::MutexLock locker(&mutex_);
-  ++num_nodes_since_last_loop_closure_;
+  ++num_nodes_since_last_loop_closure_; //根据插入激光帧的数量来判断是否进行优化
   if (options_.optimize_every_n_nodes() > 0 &&
       num_nodes_since_last_loop_closure_ > options_.optimize_every_n_nodes()) {
     return WorkItem::Result::kRunOptimization;
@@ -1107,14 +1112,14 @@ PoseGraph2D::GetAllSubmapPoses() const {
 }
 
 transform::Rigid3d PoseGraph2D::ComputeLocalToGlobalTransform(
-    const MapById<SubmapId, optimization::SubmapSpec2D>& global_submap_poses,
+    const MapById<SubmapId, optimization::SubmapSpec2D>& global_submap_poses, // 存储的是子图的全局位姿
     const int trajectory_id) const {
   auto begin_it = global_submap_poses.BeginOfTrajectory(trajectory_id);
   auto end_it = global_submap_poses.EndOfTrajectory(trajectory_id);
   if (begin_it == end_it) {
     const auto it = data_.initial_trajectory_poses.find(trajectory_id);
     if (it != data_.initial_trajectory_poses.end()) {
-      return GetInterpolatedGlobalTrajectoryPose(it->second.to_trajectory_id,
+      return GetInterpolatedGlobalTrajectoryPose(it->second.to_trajectory_id, // 获取trajectory相对于全局坐标系的位姿
                                                  it->second.time) *
              it->second.relative_pose;
     } else {

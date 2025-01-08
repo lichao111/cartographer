@@ -97,18 +97,19 @@ std::vector<sensor::PointCloud> GenerateRotatedScans(
   rotated_scans.reserve(search_parameters.num_scans);
 
   double delta_theta = -search_parameters.num_angular_perturbations *
-                       search_parameters.angular_perturbation_step_size;
-  for (int scan_index = 0; scan_index < search_parameters.num_scans;
+                       search_parameters.angular_perturbation_step_size; // 起始角度
+  std::cout<<"delta_theta start: "<<delta_theta * 360 / M_PI<<" end: "<<(delta_theta + search_parameters.num_scans * search_parameters.angular_perturbation_step_size) * 360 / M_PI<<std::endl;
+  for (int scan_index = 0; scan_index < search_parameters.num_scans; // 每一次在上一次旋转的基础上加伤角度分辨率
        ++scan_index,
            delta_theta += search_parameters.angular_perturbation_step_size) {
-    rotated_scans.push_back(sensor::TransformPointCloud(
+    rotated_scans.push_back(sensor::TransformPointCloud( // 将point_cloud按照z轴旋转delta_theta角度
         point_cloud, transform::Rigid3f::Rotation(Eigen::AngleAxisf(
                          delta_theta, Eigen::Vector3f::UnitZ()))));
   }
   return rotated_scans;
 }
 
-std::vector<DiscreteScan2D> DiscretizeScans(
+std::vector<DiscreteScan2D> DiscretizeScans( // 对传入的点云做一个平移
     const MapLimits& map_limits, const std::vector<sensor::PointCloud>& scans,
     const Eigen::Translation2f& initial_translation) {
   std::vector<DiscreteScan2D> discrete_scans;
@@ -117,9 +118,9 @@ std::vector<DiscreteScan2D> DiscretizeScans(
     discrete_scans.emplace_back();
     discrete_scans.back().reserve(scan.size());
     for (const sensor::RangefinderPoint& point : scan) {
-      const Eigen::Vector2f translated_point =
+      const Eigen::Vector2f translated_point = // 对scan中的每一个点进行平移
           Eigen::Affine2f(initial_translation) * point.position.head<2>();
-      discrete_scans.back().push_back(
+      discrete_scans.back().push_back( // 将点云的点转换成地图中的索引
           map_limits.GetCellIndex(translated_point));
     }
   }

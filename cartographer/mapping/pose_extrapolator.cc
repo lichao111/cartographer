@@ -65,6 +65,9 @@ common::Time PoseExtrapolator::GetLastExtrapolatedTime() const {
   return extrapolation_imu_tracker_->time();
 }
 
+/**
+ * 该函数仅用于添加激光计算匹配出来的位姿
+ */
 void PoseExtrapolator::AddPose(const common::Time time,
                                const transform::Rigid3d& pose) {
   if (imu_tracker_ == nullptr) {
@@ -131,7 +134,7 @@ void PoseExtrapolator::AddOdometryData(
       linear_velocity_in_tracking_frame_at_newest_odometry_time;
 }
 
-transform::Rigid3d PoseExtrapolator::ExtrapolatePose(const common::Time time) {
+transform::Rigid3d PoseExtrapolator::ExtrapolatePose(const common::Time time) { // 根据时间time，返回对应的位姿
   const TimedPose& newest_timed_pose = timed_pose_queue_.back();
   CHECK_GE(time, newest_timed_pose.time);
   if (cached_extrapolated_pose_.time != time) {
@@ -153,7 +156,10 @@ Eigen::Quaterniond PoseExtrapolator::EstimateGravityOrientation(
   return imu_tracker.orientation();
 }
 
-void PoseExtrapolator::UpdateVelocitiesFromPoses() {
+/**
+ * 根据pose更新速度
+ */
+void PoseExtrapolator::UpdateVelocitiesFromPoses() { //这个函数即可能是直接在添加imu中时调用进来的，也可能是雷达数据计算出pose时调用进来的，还可能是PublishLocalTrajectoryData调用进来的
   if (timed_pose_queue_.size() < 2) {
     // We need two poses to estimate velocities.
     return;
@@ -164,7 +170,7 @@ void PoseExtrapolator::UpdateVelocitiesFromPoses() {
   const TimedPose& oldest_timed_pose = timed_pose_queue_.front();
   const auto oldest_time = oldest_timed_pose.time;
   const double queue_delta = common::ToSeconds(newest_time - oldest_time);
-  if (queue_delta < common::ToSeconds(pose_queue_duration_)) {
+  if (queue_delta < common::ToSeconds(pose_queue_duration_)) { //进行速度估计的时间间隔必须大于pose_queue_duration_
     LOG(WARNING) << "Queue too short for velocity estimation. Queue duration: "
                  << queue_delta << " s";
     return;
@@ -172,8 +178,8 @@ void PoseExtrapolator::UpdateVelocitiesFromPoses() {
   const transform::Rigid3d& newest_pose = newest_timed_pose.pose;
   const transform::Rigid3d& oldest_pose = oldest_timed_pose.pose;
   linear_velocity_from_poses_ =
-      (newest_pose.translation() - oldest_pose.translation()) / queue_delta;
-  angular_velocity_from_poses_ =
+      (newest_pose.translation() - oldest_pose.translation()) / queue_delta; // 估算线速度
+  angular_velocity_from_poses_ =                                             // 估算角速度
       transform::RotationQuaternionToAngleAxisVector(
           oldest_pose.rotation().inverse() * newest_pose.rotation()) /
       queue_delta;
@@ -200,7 +206,7 @@ void PoseExtrapolator::AdvanceImuTracker(const common::Time time,
     // There is no IMU data until 'time', so we advance the ImuTracker and use
     // the angular velocities from poses and fake gravity to help 2D stability.
     imu_tracker->Advance(time);
-    imu_tracker->AddImuLinearAccelerationObservation(Eigen::Vector3d::UnitZ());
+    imu_tracker->AddImuLinearAccelerationObservation(Eigen::Vector3d::UnitZ()); // 如果不使用IMU数据，走此分支
     imu_tracker->AddImuAngularVelocityObservation(
         odometry_data_.size() < 2 ? angular_velocity_from_poses_
                                   : angular_velocity_from_odometry_);
@@ -217,8 +223,8 @@ void PoseExtrapolator::AdvanceImuTracker(const common::Time time,
       });
   while (it != imu_data_.end() && it->time < time) {
     imu_tracker->Advance(it->time);
-    imu_tracker->AddImuLinearAccelerationObservation(it->linear_acceleration);
-    imu_tracker->AddImuAngularVelocityObservation(it->angular_velocity);
+    imu_tracker->AddImuLinearAccelerationObservation(it->linear_acceleration); // 线性加速度
+    imu_tracker->AddImuAngularVelocityObservation(it->angular_velocity);       // 角速度
     ++it;
   }
   imu_tracker->Advance(time);
@@ -232,14 +238,14 @@ Eigen::Quaterniond PoseExtrapolator::ExtrapolateRotation(
   return last_orientation.inverse() * imu_tracker->orientation();
 }
 
-Eigen::Vector3d PoseExtrapolator::ExtrapolateTranslation(common::Time time) {
+Eigen::Vector3d PoseExtrapolator::ExtrapolateTranslation(common::Time time) { // time > newest_timed_pose.time
   const TimedPose& newest_timed_pose = timed_pose_queue_.back();
   const double extrapolation_delta =
       common::ToSeconds(time - newest_timed_pose.time);
-  if (odometry_data_.size() < 2) {
-    return extrapolation_delta * linear_velocity_from_poses_;
+  if (odometry_data_.size() < 2) { // 如果不存在两个以上的里程计数据， 则使用激光雷达数据计算的速度进行推算
+    return extrapolation_delta * linear_velocity_from_poses_; 
   }
-  return extrapolation_delta * linear_velocity_from_odometry_;
+  return extrapolation_delta * linear_velocity_from_odometry_; // 如果存在两帧以上的里程计数据，则使用里程计数据计算的速度进行推算
 }
 
 PoseExtrapolator::ExtrapolationResult

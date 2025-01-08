@@ -31,7 +31,7 @@ void PureLocalizationTrimmer::Trim(Trimmable* const pose_graph) {
   if (pose_graph->IsFinished(trajectory_id_)) {
     num_submaps_to_keep_ = 0;
   }
-
+  // 修剪掉多余的字图，只保留num_submaps_to_keep个子图， num_submaps_to_keep
   auto submap_ids = pose_graph->GetSubmapIds(trajectory_id_);
   for (std::size_t i = 0; i + num_submaps_to_keep_ < submap_ids.size(); ++i) {
     pose_graph->TrimSubmap(submap_ids.at(i));

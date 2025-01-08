@@ -74,7 +74,7 @@ std::unique_ptr<transform::Rigid2d> LocalTrajectoryBuilder2D::ScanMatch(
   // the Ceres scan matcher.
   transform::Rigid2d initial_ceres_pose = pose_prediction;
 
-  if (options_.use_online_correlative_scan_matching()) {
+  if (options_.use_online_correlative_scan_matching()) { // 在进行正式匹配之前，先进行一次粗匹配，实际就是暴力搜索匹配，很耗时，但是会后续的扫描匹配结果更精准
     const double score = real_time_correlative_scan_matcher_.Match(
         pose_prediction, filtered_gravity_aligned_point_cloud,
         *matching_submap->grid(), &initial_ceres_pose);
@@ -104,17 +104,17 @@ std::unique_ptr<transform::Rigid2d> LocalTrajectoryBuilder2D::ScanMatch(
 std::unique_ptr<LocalTrajectoryBuilder2D::MatchingResult>
 LocalTrajectoryBuilder2D::AddRangeData(
     const std::string& sensor_id,
-    const sensor::TimedPointCloudData& unsynchronized_data) {
+    const sensor::TimedPointCloudData& unsynchronized_data) { // 未经过时间同步的点云数据（多个雷达）
   auto synchronized_data =
       range_data_collator_.AddRangeData(sensor_id, unsynchronized_data);
-  if (synchronized_data.ranges.empty()) {
+  if (synchronized_data.ranges.empty()) {  //经过了时间同步
     LOG(INFO) << "Range data collator filling buffer.";
     return nullptr;
   }
 
   const common::Time& time = synchronized_data.time;
   // Initialize extrapolator now if we do not ever use an IMU.
-  if (!options_.use_imu_data()) {
+  if (!options_.use_imu_data()) { // 如果不使用IMU，则在这里初始化Extrapolator， 否则的话在使用IMU的地方进行初始化
     InitializeExtrapolator(time);
   }
 
@@ -151,7 +151,7 @@ LocalTrajectoryBuilder2D::AddRangeData(
       time_point = extrapolator_->GetLastExtrapolatedTime();
     }
     range_data_poses.push_back(
-        extrapolator_->ExtrapolatePose(time_point).cast<float>());
+        extrapolator_->ExtrapolatePose(time_point).cast<float>()); // 所有点云的点，都获取到一个位姿（通过推断器） 这里的时间time_point一定是大于姿态外推器中的最新时间，所以这是一个估计值
   }
 
   if (num_accumulated_ == 0) {
@@ -165,12 +165,14 @@ LocalTrajectoryBuilder2D::AddRangeData(
   for (size_t i = 0; i < synchronized_data.ranges.size(); ++i) {
     const sensor::TimedRangefinderPoint& hit =
         synchronized_data.ranges[i].point_time;
-    const Eigen::Vector3f origin_in_local =
+    const Eigen::Vector3f origin_in_local = //把雷达在机器人坐标系的位置,变换成雷达在local坐标系的位置（local坐标系也就是局部子图坐标系）
         range_data_poses[i] *
-        synchronized_data.origins.at(synchronized_data.ranges[i].origin_index);
+        synchronized_data.origins.at(synchronized_data.ranges[i].origin_index); // pose乘上原点坐标， 表示雷达原点在local坐标系下的坐标
+    // 运动畸变的去除, 将相对于tracking_frame的hit坐标 转成 local坐标系下的坐标
+    // 把点云数据变换到 local 坐标系下
     sensor::RangefinderPoint hit_in_local =
-        range_data_poses[i] * sensor::ToRangefinderPoint(hit);
-    const Eigen::Vector3f delta = hit_in_local.position - origin_in_local;
+        range_data_poses[i] * sensor::ToRangefinderPoint(hit); // 点云hit点在local坐标系下的坐标
+    const Eigen::Vector3f delta = hit_in_local.position - origin_in_local; // 激光数据与激光眼点的距离
     const float range = delta.norm();
     if (range >= options_.min_range()) {
       if (range <= options_.max_range()) {
@@ -184,21 +186,22 @@ LocalTrajectoryBuilder2D::AddRangeData(
     }
   }
   ++num_accumulated_;
-
+  //  判断当前累计的激光数据是否达到了设定的数量
   if (num_accumulated_ >= options_.num_accumulated_range_data()) {
-    const common::Time current_sensor_time = synchronized_data.time;
+    const common::Time current_sensor_time = synchronized_data.time; // 获取当前同步数据时间
     absl::optional<common::Duration> sensor_duration;
-    if (last_sensor_time_.has_value()) {
+    if (last_sensor_time_.has_value()) { // 如果有上一次处理的时间，计算差值
       sensor_duration = current_sensor_time - last_sensor_time_.value();
     }
     last_sensor_time_ = current_sensor_time;
-    num_accumulated_ = 0;
+    num_accumulated_ = 0; // 累计次数清零
+    // 推测同步数据最后一个点云对应时间时刻机器人的姿态，旋转向量， 也即朝向
     const transform::Rigid3d gravity_alignment = transform::Rigid3d::Rotation(
         extrapolator_->EstimateGravityOrientation(time));
     // TODO(gaschler): This assumes that 'range_data_poses.back()' is at time
     // 'time'.
     accumulated_range_data_.origin = range_data_poses.back().translation();
-    return AddAccumulatedRangeData(
+    return AddAccumulatedRangeData( // 调用AddAccumulatedRangeData进行匹配、插入数据等。返回MatchingResult
         time,
         TransformToGravityAlignedFrameAndFilter(
             gravity_alignment.cast<float>() * range_data_poses.back().inverse(),
@@ -207,12 +210,14 @@ LocalTrajectoryBuilder2D::AddRangeData(
   }
   return nullptr;
 }
-
+/**
+ * 对该函数的解析https://blog.csdn.net/weixin_28683491/article/details/134739562
+ */
 std::unique_ptr<LocalTrajectoryBuilder2D::MatchingResult>
 LocalTrajectoryBuilder2D::AddAccumulatedRangeData(
     const common::Time time,
-    const sensor::RangeData& gravity_aligned_range_data,
-    const transform::Rigid3d& gravity_alignment,
+    const sensor::RangeData& gravity_aligned_range_data, // z轴滤波及体素滤波后的点云数据
+    const transform::Rigid3d& gravity_alignment,         // 当前时刻机器人的姿态
     const absl::optional<common::Duration>& sensor_duration) {
   if (gravity_aligned_range_data.returns.empty()) {
     LOG(WARNING) << "Dropped empty horizontal range data.";
@@ -220,7 +225,8 @@ LocalTrajectoryBuilder2D::AddAccumulatedRangeData(
   }
 
   // Computes a gravity aligned pose prediction.
-  const transform::Rigid3d non_gravity_aligned_pose_prediction =
+  // 进行位姿的预测
+  const transform::Rigid3d non_gravity_aligned_pose_prediction =   // gravity坐标系和local左边系的原点重合，但是gravity的z轴和重力方向一致
       extrapolator_->ExtrapolatePose(time);
   const transform::Rigid2d pose_prediction = transform::Project2D(
       non_gravity_aligned_pose_prediction * gravity_alignment.inverse());
@@ -233,20 +239,23 @@ LocalTrajectoryBuilder2D::AddAccumulatedRangeData(
   }
 
   // local map frame <- gravity-aligned frame
+  // 进行submap和点云的匹配
   std::unique_ptr<transform::Rigid2d> pose_estimate_2d =
-      ScanMatch(time, pose_prediction, filtered_gravity_aligned_point_cloud);
+      ScanMatch(time, pose_prediction, filtered_gravity_aligned_point_cloud); // pose_prediction是预测的位姿(待优化) filtered_gravity_aligned_point_cloud是点云数据(重力矫正过)
   if (pose_estimate_2d == nullptr) {
     LOG(WARNING) << "Scan matching failed.";
     return nullptr;
   }
+  // 机器人位姿恢复到local系
   const transform::Rigid3d pose_estimate =
       transform::Embed3D(*pose_estimate_2d) * gravity_alignment;
-  extrapolator_->AddPose(time, pose_estimate);
+  extrapolator_->AddPose(time, pose_estimate); // 添加估计得到的pose到extrapolator
 
+  // 点云数据恢复到local系
   sensor::RangeData range_data_in_local =
       TransformRangeData(gravity_aligned_range_data,
                          transform::Embed3D(pose_estimate_2d->cast<float>()));
-  std::unique_ptr<InsertionResult> insertion_result = InsertIntoSubmap(
+  std::unique_ptr<InsertionResult> insertion_result = InsertIntoSubmap( // 将传感器数据插入到submap中
       time, range_data_in_local, filtered_gravity_aligned_point_cloud,
       pose_estimate, gravity_alignment.rotation());
 

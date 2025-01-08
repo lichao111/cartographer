@@ -76,12 +76,13 @@ ConstraintBuilder2D::~ConstraintBuilder2D() {
 
 void ConstraintBuilder2D::MaybeAddConstraint(
     const SubmapId& submap_id, const Submap2D* const submap,
-    const NodeId& node_id, const TrajectoryNode::Data* const constant_data,
-    const transform::Rigid2d& initial_relative_pose) {
+    const NodeId& node_id, const TrajectoryNode::Data* const constant_data, // constant_data是节点数据
+    const transform::Rigid2d& initial_relative_pose) { // initial_relative_pose是约束的初值
   if (initial_relative_pose.translation().norm() >
-      options_.max_constraint_distance()) {
+      options_.max_constraint_distance()) { // 距离太远的不做约束 目前默认的15米
     return;
   }
+  // 如果没有被采样器采样到 也不会做约束
   if (!per_submap_sampler_
            .emplace(std::piecewise_construct, std::forward_as_tuple(submap_id),
                     std::forward_as_tuple(options_.sampling_ratio()))
@@ -97,20 +98,23 @@ void ConstraintBuilder2D::MaybeAddConstraint(
   constraints_.emplace_back();
   kQueueLengthMetric->Set(constraints_.size());
   auto* const constraint = &constraints_.back();
-  const auto* scan_matcher =
+  const auto* scan_matcher = // 创建一个子图匹配器， 也就是产生不同分辨率的地图
       DispatchScanMatcherConstruction(submap_id, submap->grid());
   auto constraint_task = absl::make_unique<common::Task>();
-  constraint_task->SetWorkItem([=]() LOCKS_EXCLUDED(mutex_) {
+  constraint_task->SetWorkItem([=]() LOCKS_EXCLUDED(mutex_) { // 计算约束
     ComputeConstraint(submap_id, submap, node_id, false, /* match_full_submap */
                       constant_data, initial_relative_pose, *scan_matcher,
                       constraint);
   });
-  constraint_task->AddDependency(scan_matcher->creation_task_handle);
+  constraint_task->AddDependency(scan_matcher->creation_task_handle); // 添加依赖任务 是因为计算约束需要用到scan_matcher
   auto constraint_task_handle =
-      thread_pool_->Schedule(std::move(constraint_task));
+      thread_pool_->Schedule(std::move(constraint_task)); // 放入线程池等待执行
   finish_node_task_->AddDependency(constraint_task_handle);
 }
 
+/**
+ * 对整体子图进行回环检测 测试没有距离限制 
+ * */ 
 void ConstraintBuilder2D::MaybeAddGlobalConstraint(
     const SubmapId& submap_id, const Submap2D* const submap,
     const NodeId& node_id, const TrajectoryNode::Data* const constant_data) {
@@ -213,9 +217,9 @@ void ConstraintBuilder2D::ComputeConstraint(
     if (submap_scan_matcher.fast_correlative_scan_matcher->MatchFullSubmap(
             constant_data->filtered_gravity_aligned_point_cloud,
             options_.global_localization_min_score(), &score, &pose_estimate)) {
-      CHECK_GT(score, options_.global_localization_min_score());
-      CHECK_GE(node_id.trajectory_id, 0);
-      CHECK_GE(submap_id.trajectory_id, 0);
+      CHECK_GT(score, options_.global_localization_min_score()); // node和submap之间的匹配分数 要高
+      CHECK_GE(node_id.trajectory_id, 0);                        // trajectory_id要大于等于0
+      CHECK_GE(submap_id.trajectory_id, 0);                      // trajectory_id要大于等于0 
       kGlobalConstraintsFoundMetric->Increment();
       kGlobalConstraintScoresMetric->Observe(score);
     } else {

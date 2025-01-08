@@ -130,12 +130,12 @@ int MapBuilder::AddTrajectoryBuilder(
   } else {
     std::unique_ptr<LocalTrajectoryBuilder2D> local_trajectory_builder;
     if (trajectory_options.has_trajectory_builder_2d_options()) {
-      local_trajectory_builder = absl::make_unique<LocalTrajectoryBuilder2D>(
+      local_trajectory_builder = absl::make_unique<LocalTrajectoryBuilder2D>( // 局部轨迹构建器
           trajectory_options.trajectory_builder_2d_options(),
           SelectRangeSensorIds(expected_sensor_ids));
     }
     DCHECK(dynamic_cast<PoseGraph2D*>(pose_graph_.get()));
-    trajectory_builders_.push_back(absl::make_unique<CollatedTrajectoryBuilder>(
+    trajectory_builders_.push_back(absl::make_unique<CollatedTrajectoryBuilder>( // 全局轨迹构建器
         trajectory_options, sensor_collator_.get(), trajectory_id,
         expected_sensor_ids,
         CreateGlobalTrajectoryBuilder2D(
@@ -143,6 +143,7 @@ int MapBuilder::AddTrajectoryBuilder(
             static_cast<PoseGraph2D*>(pose_graph_.get()),
             local_slam_result_callback, pose_graph_odometry_motion_filter)));
   }
+  // 纯定位
   MaybeAddPureLocalizationTrimmer(trajectory_id, trajectory_options,
                                   pose_graph_.get());
 
@@ -357,7 +358,7 @@ std::map<int, int> MapBuilder::LoadState(
     }
   }
 
-  if (load_frozen_state) {
+  if (load_frozen_state) { // 实际测试并且将trajectory冻结
     // Add information about which nodes belong to which submap.
     // This is required, even without constraints.
     for (const proto::PoseGraph::Constraint& constraint_proto :

@@ -43,7 +43,7 @@ void ImuTracker::Advance(const common::Time time) {
       transform::AngleAxisVectorToRotationQuaternion(
           Eigen::Vector3d(imu_angular_velocity_ * delta_t));
   orientation_ = (orientation_ * rotation).normalized();
-  gravity_vector_ = rotation.conjugate() * gravity_vector_;
+  gravity_vector_ = rotation.conjugate() * gravity_vector_; //代表重力向量
   time_ = time;
 }
 
@@ -57,15 +57,15 @@ void ImuTracker::AddImuLinearAccelerationObservation(
           : std::numeric_limits<double>::infinity();
   last_linear_acceleration_time_ = time_;
   const double alpha = 1. - std::exp(-delta_t / imu_gravity_time_constant_);
-  gravity_vector_ =
+  gravity_vector_ = //使用指数移动平均法更新重力向量 gravity_vector_
       (1. - alpha) * gravity_vector_ + alpha * imu_linear_acceleration;
   // Change the 'orientation_' so that it agrees with the current
   // 'gravity_vector_'.
   const Eigen::Quaterniond rotation = FromTwoVectors(
       gravity_vector_, orientation_.conjugate() * Eigen::Vector3d::UnitZ());
   orientation_ = (orientation_ * rotation).normalized();
-  CHECK_GT((orientation_ * gravity_vector_).z(), 0.);
-  CHECK_GT((orientation_ * gravity_vector_).normalized().z(), 0.99);
+  CHECK_GT((orientation_ * gravity_vector_).z(), 0.); //检查更新后的姿态是否与重力向量一致
+  CHECK_GT((orientation_ * gravity_vector_).normalized().z(), 0.99); //确保姿态的z轴分量大于0，并且归一化后的z轴分量接近1。
 }
 
 void ImuTracker::AddImuAngularVelocityObservation(

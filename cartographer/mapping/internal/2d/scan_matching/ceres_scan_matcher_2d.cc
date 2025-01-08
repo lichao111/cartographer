@@ -70,6 +70,7 @@ void CeresScanMatcher2D::Match(const Eigen::Vector2d& target_translation,
                                    initial_pose_estimate.translation().y(),
                                    initial_pose_estimate.rotation().angle()};
   ceres::Problem problem;
+  // 地图部分的残差
   CHECK_GT(options_.occupied_space_weight(), 0.);
   switch (grid.GetGridType()) {
     case GridType::PROBABILITY_GRID:
@@ -89,16 +90,17 @@ void CeresScanMatcher2D::Match(const Eigen::Vector2d& target_translation,
           nullptr /* loss function */, ceres_pose_estimate);
       break;
   }
+  // 平移的残差
   CHECK_GT(options_.translation_weight(), 0.);
   problem.AddResidualBlock(
       TranslationDeltaCostFunctor2D::CreateAutoDiffCostFunction(
-          options_.translation_weight(), target_translation),
-      nullptr /* loss function */, ceres_pose_estimate);
+          options_.translation_weight(), target_translation), // 平移的目标值，没有使用校准后的平移
+      nullptr /* loss function */, ceres_pose_estimate); // 平移的初值
   CHECK_GT(options_.rotation_weight(), 0.);
   problem.AddResidualBlock(
       RotationDeltaCostFunctor2D::CreateAutoDiffCostFunction(
-          options_.rotation_weight(), ceres_pose_estimate[2]),
-      nullptr /* loss function */, ceres_pose_estimate);
+          options_.rotation_weight(), ceres_pose_estimate[2]), // 角度的目标值
+      nullptr /* loss function */, ceres_pose_estimate); // 角度的初值
 
   ceres::Solve(ceres_solver_options_, &problem, summary);
 

@@ -58,17 +58,24 @@ float ComputeCandidateScore(const TSDF2D& tsdf,
   return candidate_score;
 }
 
+/**
+ * 计算点云在指定像素坐标位置下与ProbalilityGrid的匹配得分
+ */
 float ComputeCandidateScore(const ProbabilityGrid& probability_grid,
                             const DiscreteScan2D& discrete_scan,
                             int x_index_offset, int y_index_offset) {
   float candidate_score = 0.f;
   for (const Eigen::Array2i& xy_index : discrete_scan) {
+    // 对点云进行平移
     const Eigen::Array2i proposed_xy_index(xy_index.x() + x_index_offset,
                                            xy_index.y() + y_index_offset);
+    // 获取指定位置的概率
     const float probability =
         probability_grid.GetProbability(proposed_xy_index);
+    // 以概率为得分
     candidate_score += probability;
   }
+  // 计算平均得分
   candidate_score /= static_cast<float>(discrete_scan.size());
   CHECK_GT(candidate_score, 0.f);
   return candidate_score;
@@ -94,8 +101,10 @@ RealTimeCorrelativeScanMatcher2D::GenerateExhaustiveSearchCandidates(
          search_parameters.linear_bounds[scan_index].min_y + 1);
     num_candidates += num_linear_x_candidates * num_linear_y_candidates;
   }
+  std::cout<<" num_candidates: "<<num_candidates<<std::endl;
   std::vector<Candidate2D> candidates;
   candidates.reserve(num_candidates);
+  // 生成候选解， 候选解是有像素点的偏差组成的
   for (int scan_index = 0; scan_index != search_parameters.num_scans;
        ++scan_index) {
     for (int x_index_offset = search_parameters.linear_bounds[scan_index].min_x;
@@ -130,8 +139,8 @@ double RealTimeCorrelativeScanMatcher2D::Match(
       rotated_point_cloud, grid.limits().resolution());
 
   const std::vector<sensor::PointCloud> rotated_scans =
-      GenerateRotatedScans(rotated_point_cloud, search_parameters);
-  const std::vector<DiscreteScan2D> discrete_scans = DiscretizeScans(
+      GenerateRotatedScans(rotated_point_cloud, search_parameters); // 生成按照不同角度旋转后的点云集合， 因为已经进行了重力对其，所以只需要在z轴上进行旋转即可
+  const std::vector<DiscreteScan2D> discrete_scans = DiscretizeScans( // 将需转后的点云集合按照预测的平移量进行平移， 获取平移后的点在地图中的索引
       grid.limits(), rotated_scans,
       Eigen::Translation2f(initial_pose_estimate.translation().x(),
                            initial_pose_estimate.translation().y()));
@@ -167,6 +176,7 @@ void RealTimeCorrelativeScanMatcher2D::ScoreCandidates(
             candidate.y_index_offset);
         break;
     }
+    // 由于这个函数会导致距离初步估算出来的位姿越远的候选解得分越低，所以这里对得分进行了惩罚
     candidate.score *=
         std::exp(-common::Pow2(std::hypot(candidate.x, candidate.y) *
                                    options_.translation_delta_cost_weight() +

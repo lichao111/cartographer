@@ -62,7 +62,7 @@ void CollatedTrajectoryBuilder::AddData(std::unique_ptr<sensor::Data> data) {
   sensor_collator_->AddSensorData(trajectory_id_, std::move(data));
 }
 
-void CollatedTrajectoryBuilder::HandleCollatedSensorData(
+void CollatedTrajectoryBuilder::HandleCollatedSensorData( // 这个函数会被注册为callback, 以处理传感器数据 Collator::queue_中的数据
     const std::string& sensor_id, std::unique_ptr<sensor::Data> data) {
   auto it = rate_timers_.find(sensor_id);
   if (it == rate_timers_.end()) {

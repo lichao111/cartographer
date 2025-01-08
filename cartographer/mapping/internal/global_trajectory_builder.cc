@@ -59,7 +59,7 @@ class GlobalTrajectoryBuilder : public mapping::TrajectoryBuilderInterface {
     CHECK(local_trajectory_builder_)
         << "Cannot add TimedPointCloudData without a LocalTrajectoryBuilder.";
     std::unique_ptr<typename LocalTrajectoryBuilder::MatchingResult>
-        matching_result = local_trajectory_builder_->AddRangeData(
+        matching_result = local_trajectory_builder_->AddRangeData( // 局部建图（前端建图）
             sensor_id, timed_point_cloud_data);
     if (matching_result == nullptr) {
       // The range data has not been fully accumulated yet.
@@ -69,9 +69,11 @@ class GlobalTrajectoryBuilder : public mapping::TrajectoryBuilderInterface {
     std::unique_ptr<InsertionResult> insertion_result;
     if (matching_result->insertion_result != nullptr) {
       kLocalSlamInsertionResults->Increment();
+      // 将匹配后的结果， 当作节点 加入到位姿图中
       auto node_id = pose_graph_->AddNode(
-          matching_result->insertion_result->constant_data, trajectory_id_,
-          matching_result->insertion_result->insertion_submaps);
+          matching_result->insertion_result->constant_data, // 子图相关的
+          trajectory_id_, // 轨迹id
+          matching_result->insertion_result->insertion_submaps); // 子图
       CHECK_EQ(node_id.trajectory_id, trajectory_id_);
       insertion_result = absl::make_unique<InsertionResult>(InsertionResult{
           node_id, matching_result->insertion_result->constant_data,

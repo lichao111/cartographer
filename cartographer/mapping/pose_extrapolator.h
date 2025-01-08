@@ -82,7 +82,7 @@ class PoseExtrapolator : public PoseExtrapolatorInterface {
 
   const double gravity_time_constant_;
   std::deque<sensor::ImuData> imu_data_;
-  std::unique_ptr<ImuTracker> imu_tracker_;
+  std::unique_ptr<ImuTracker> imu_tracker_; // ImuTracker是一个imu追踪器， 他只负责旋转向量的跟踪与维护，并不对IMU的translation进行推算
   std::unique_ptr<ImuTracker> odometry_imu_tracker_;
   std::unique_ptr<ImuTracker> extrapolation_imu_tracker_;
   TimedPose cached_extrapolated_pose_;
