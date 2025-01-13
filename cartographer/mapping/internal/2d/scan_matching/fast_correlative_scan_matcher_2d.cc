@@ -238,8 +238,8 @@ bool FastCorrelativeScanMatcher2D::MatchWithSearchParameters(
       transform::Rigid3f::Rotation(Eigen::AngleAxisf(
           initial_rotation.cast<float>().angle(), Eigen::Vector3f::UnitZ())));
   const std::vector<sensor::PointCloud> rotated_scans =
-      GenerateRotatedScans(rotated_point_cloud, search_parameters);
-  const std::vector<DiscreteScan2D> discrete_scans = DiscretizeScans(
+      GenerateRotatedScans(rotated_point_cloud, search_parameters); // 将点云做旋转
+  const std::vector<DiscreteScan2D> discrete_scans = DiscretizeScans( // 将点云做平移
       limits_, rotated_scans,
       Eigen::Translation2f(initial_pose_estimate.translation().x(),
                            initial_pose_estimate.translation().y()));
@@ -256,9 +256,9 @@ bool FastCorrelativeScanMatcher2D::MatchWithSearchParameters(
         {initial_pose_estimate.translation().x() + best_candidate.x,
          initial_pose_estimate.translation().y() + best_candidate.y},
         initial_rotation * Eigen::Rotation2Dd(best_candidate.orientation));
-    return true;
+    return true; // 匹配成功
   }
-  return false;
+  return false;  // 匹配失败
 }
 
 std::vector<Candidate2D>

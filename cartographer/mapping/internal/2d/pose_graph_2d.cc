@@ -282,6 +282,7 @@ void PoseGraph2D::ComputeConstraint(const NodeId& node_id,
     const common::Time last_connection_time = // node和submap最后一次连接的时间
         data_.trajectory_connectivity_state.LastConnectionTime(
             node_id.trajectory_id, submap_id.trajectory_id);
+    LOG(INFO)<<"node_time: "<<node_time<<", last_connect_time: "<<last_connection_time<<" node_id: "<<node_id.trajectory_id<<":"<<node_id.node_index<<"submap_id: "<<submap_id.trajectory_id<<":"<<submap_id.submap_index;
     if (node_id.trajectory_id == submap_id.trajectory_id || // 如果node和submap属于同一个trajectory
         node_time <  // 最近两者之间有过全局约束
             last_connection_time +
@@ -292,8 +293,10 @@ void PoseGraph2D::ComputeConstraint(const NodeId& node_id,
       // the submap's trajectory, it suffices to do a match constrained to a
       // local search window.
       maybe_add_local_constraint = true;
+      LOG(INFO)<<" maybe_add_local_constraint----> ";
     } else if (global_localization_samplers_[node_id.trajectory_id]->Pulse()) { // 被全局采样器采样到了 进行全局优化
       maybe_add_global_constraint = true;
+      LOG(INFO)<<" maybe_add_global_constraint--->";
     }
     constant_data = data_.trajectory_nodes.at(node_id).constant_data.get();
     submap = static_cast<const Submap2D*>(
@@ -381,7 +384,7 @@ WorkItem::Result PoseGraph2D::ComputeConstraintsForNode(
     }
   }
 
-  for (const auto& submap_id : finished_submap_ids) { // 但前节点和过去已经完成的子图进行匹配， 也即回环检测(如果是纯定位 finished_submap_ids轨迹id为0)
+  for (const auto& submap_id : finished_submap_ids) { // 当前节点和过去已经完成的子图进行匹配， 也即回环检测(如果是纯定位 finished_submap_ids轨迹id为0)
     ComputeConstraint(node_id, submap_id);
   }
 
@@ -420,7 +423,7 @@ common::Time PoseGraph2D::GetLatestNodeTime(const NodeId& node_id,
   return time;
 }
 
-void PoseGraph2D::UpdateTrajectoryConnectivity(const Constraint& constraint) {
+void PoseGraph2D::UpdateTrajectoryConnectivity(const Constraint& constraint) { // 建图和导航之间建立链接
   CHECK_EQ(constraint.tag, Constraint::INTER_SUBMAP);
   const common::Time time =
       GetLatestNodeTime(constraint.node_id, constraint.submap_id);

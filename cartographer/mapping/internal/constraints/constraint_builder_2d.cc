@@ -254,7 +254,7 @@ void ConstraintBuilder2D::ComputeConstraint(
 
   const transform::Rigid2d constraint_transform =
       ComputeSubmapPose(*submap).inverse() * pose_estimate;
-  constraint->reset(new Constraint{submap_id,
+  constraint->reset(new Constraint{submap_id, // 限制被成功计算得出
                                    node_id,
                                    {transform::Embed3D(constraint_transform),
                                     options_.loop_closure_translation_weight(),

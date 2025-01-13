@@ -269,11 +269,11 @@ void OptimizationProblem2D::Solve(
     C_submaps.Insert(submap_id_data.id,
                      FromPose(submap_id_data.data.global_pose));
     problem.AddParameterBlock(C_submaps.at(submap_id_data.id).data(), 3);
-    if (first_submap || frozen) {
+    if (first_submap || frozen) {   //如果是第一个子图 也不进行优化
       first_submap = false;
       // Fix the pose of the first submap or all submaps of a frozen
       // trajectory.
-      problem.SetParameterBlockConstant(C_submaps.at(submap_id_data.id).data());
+      problem.SetParameterBlockConstant(C_submaps.at(submap_id_data.id).data()); // 设置为固定值 不进行优化
     }
   }
   for (const auto& node_id_data : node_data_) {
@@ -282,7 +282,7 @@ void OptimizationProblem2D::Solve(
     C_nodes.Insert(node_id_data.id, FromPose(node_id_data.data.global_pose_2d));
     problem.AddParameterBlock(C_nodes.at(node_id_data.id).data(), 3);
     if (frozen) {
-      problem.SetParameterBlockConstant(C_nodes.at(node_id_data.id).data());
+      problem.SetParameterBlockConstant(C_nodes.at(node_id_data.id).data());  //设置为固定值 不进行优化
     }
   }
   // Add cost functions for intra- and inter-submap constraints.
