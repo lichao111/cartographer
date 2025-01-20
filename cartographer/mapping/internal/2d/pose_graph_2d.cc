@@ -278,11 +278,11 @@ void PoseGraph2D::ComputeConstraint(const NodeId& node_id,
       return;
     }
 
-    const common::Time node_time = GetLatestNodeTime(node_id, submap_id); // node和submap最后一次具有约束的时间
-    const common::Time last_connection_time = // node和submap最后一次连接的时间
+    const common::Time node_time = GetLatestNodeTime(node_id, submap_id); // 获取该 node 和该 submap 中的 node 中较新的时间
+    const common::Time last_connection_time = // node和submap最后一次产生约束的时间
         data_.trajectory_connectivity_state.LastConnectionTime(
             node_id.trajectory_id, submap_id.trajectory_id);
-    LOG(INFO)<<"node_time: "<<node_time<<", last_connect_time: "<<last_connection_time<<" node_id: "<<node_id.trajectory_id<<":"<<node_id.node_index<<"submap_id: "<<submap_id.trajectory_id<<":"<<submap_id.submap_index;
+    LOG(INFO)<<"node_time distance: "<<common::ToSeconds(node_time - last_connection_time)<<"node_id: "<<node_id.trajectory_id<<":"<<node_id.node_index<<" submap_id: "<<submap_id.trajectory_id<<":"<<submap_id.submap_index;
     if (node_id.trajectory_id == submap_id.trajectory_id || // 如果node和submap属于同一个trajectory
         node_time <  // 最近两者之间有过全局约束
             last_connection_time +

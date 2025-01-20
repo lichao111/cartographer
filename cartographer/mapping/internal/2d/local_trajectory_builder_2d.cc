@@ -150,6 +150,8 @@ LocalTrajectoryBuilder2D::AddRangeData(
       }
       time_point = extrapolator_->GetLastExtrapolatedTime();
     }
+    auto extrapolated_pose = extrapolator_->ExtrapolatePose(time_point);
+    LOG(INFO) << "time_point: "<<time_point<< "; Extrapolated pose: " << extrapolated_pose.DebugString();
     range_data_poses.push_back(
         extrapolator_->ExtrapolatePose(time_point).cast<float>()); // 所有点云的点，都获取到一个位姿（通过推断器） 这里的时间time_point一定是大于姿态外推器中的最新时间，所以这是一个估计值
   }

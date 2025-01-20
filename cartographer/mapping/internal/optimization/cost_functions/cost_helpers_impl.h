@@ -178,10 +178,12 @@ InterpolateNodes2D(const T* const prev_node_pose,
   const std::array<T, 4> next_node_rotation = {
       {next_quaternion.w(), next_quaternion.x(), next_quaternion.y(),
        next_quaternion.z()}};
-
+  // 插值旋转：使用球面线性插值（Slerp）方法插值两个旋转四元数。
+  //SlerpQuaternions 函数接受两个旋转四元数和插值参数，返回插值后的旋转四元数。
   return std::make_tuple(
       SlerpQuaternions(prev_node_rotation.data(), next_node_rotation.data(),
                        interpolation_parameter),
+  // 插值平移：线性插值两个节点的平移部分。
       std::array<T, 3>{
           {prev_node_pose[0] + interpolation_parameter *
                                    (next_node_pose[0] - prev_node_pose[0]),
