@@ -238,6 +238,7 @@ void OptimizationProblem2D::SetMaxNumIterations(
       max_num_iterations);
 }
 
+//这里进行真正的优化， 之前只是生成constraint, 这里判断了一些条件下不应该进行优化
 void OptimizationProblem2D::Solve(
     const std::vector<Constraint>& constraints,
     const std::map<int, PoseGraphInterface::TrajectoryState>&

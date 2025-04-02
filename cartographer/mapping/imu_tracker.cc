@@ -46,7 +46,7 @@ void ImuTracker::Advance(const common::Time time) {
   gravity_vector_ = rotation.conjugate() * gravity_vector_; //代表重力向量
   time_ = time;
 }
-
+// 线速度也会影响到imu的姿态估计，只不过只用了重力方向 指数移动平滑使得重力方向更加准确 防止重力方向的抖动
 void ImuTracker::AddImuLinearAccelerationObservation(
     const Eigen::Vector3d& imu_linear_acceleration) {
   // Update the 'gravity_vector_' with an exponential moving average using the
