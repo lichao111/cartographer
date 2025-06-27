@@ -23,6 +23,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <fstream>
 
 #include "cartographer/common/internal/ceres_solver_options.h"
 #include "cartographer/common/histogram.h"
@@ -288,8 +289,19 @@ void OptimizationProblem2D::Solve(
     }
   }
   // Add cost functions for intra- and inter-submap constraints.
+  std::vector<ceres::ResidualBlockId> residual_block_ids;
+  std::vector<double> cost_before;
+  std::vector<double> cost_after;
+
+  std::vector<ceres::ResidualBlockId> residual_block_ids_intra;
+  std::vector<double> cost_before_intra;
+  std::vector<double> cost_after_intra;
+
+  std::vector<ceres::ResidualBlockId> residual_block_ids_inter;
+  std::vector<double> cost_before_inter;
+  std::vector<double> cost_after_inter;
   for (const Constraint& constraint : constraints) {
-    problem.AddResidualBlock(
+    auto blockid = problem.AddResidualBlock(
         CreateAutoDiffSpaCostFunction(constraint.pose),
         // Loop closure constraints should have a loss function.
         constraint.tag == Constraint::INTER_SUBMAP
@@ -297,6 +309,15 @@ void OptimizationProblem2D::Solve(
             : nullptr,
         C_submaps.at(constraint.submap_id).data(),
         C_nodes.at(constraint.node_id).data());
+    residual_block_ids.push_back(blockid);
+    if(constraint.tag == Constraint::INTRA_SUBMAP)
+    {
+      residual_block_ids_intra.push_back(blockid);
+    }
+    else if(constraint.tag == Constraint::INTER_SUBMAP)
+    {
+      residual_block_ids_inter.push_back(blockid);
+    }
   }
   // Add cost functions for landmarks.
   AddLandmarkCostFunctions(landmark_nodes, node_data_, &C_nodes, &C_landmarks,
@@ -402,6 +423,43 @@ void OptimizationProblem2D::Solve(
     }
   }
 
+  for(const auto& id : residual_block_ids)
+  {
+    // 计算每个constraint的cost
+    double cost = 0.0;
+    ceres::Problem::EvaluateOptions evaluate_options;
+    evaluate_options.residual_blocks = {id};
+    problem.Evaluate(
+    evaluate_options,
+    &cost, nullptr, nullptr, nullptr);
+    cost_before.push_back(cost);
+  }
+
+  for(const auto& id : residual_block_ids_intra)
+  {
+    // 计算每个constraint的cost
+    double cost = 0.0;
+    ceres::Problem::EvaluateOptions evaluate_options;
+    evaluate_options.residual_blocks = {id};
+    problem.Evaluate(
+    evaluate_options,
+    &cost, nullptr, nullptr, nullptr);
+    cost_before_intra.push_back(cost);
+  }
+
+  for(const auto& id : residual_block_ids_inter)
+  {
+    // 计算每个constraint的cost
+    double cost = 0.0;
+    ceres::Problem::EvaluateOptions evaluate_options;
+    evaluate_options.residual_blocks = {id};
+    problem.Evaluate(
+    evaluate_options,
+    &cost, nullptr, nullptr, nullptr);
+    cost_before_inter.push_back(cost);
+  }
+
+
   // Solve.
   ceres::Solver::Summary summary;
   ceres::Solve(
@@ -410,6 +468,78 @@ void OptimizationProblem2D::Solve(
   if (options_.log_solver_summary()) {
     LOG(INFO) << summary.FullReport();
   }
+
+  for (const auto& id : residual_block_ids) {
+    // 计算每个constraint的cost
+    double cost = 0.0;
+    ceres::Problem::EvaluateOptions evaluate_options;
+    evaluate_options.residual_blocks = {id};
+    problem.Evaluate(
+    evaluate_options,
+    &cost, nullptr, nullptr, nullptr);
+    cost_after.push_back(cost);
+  }
+
+  for (const auto& id : residual_block_ids_intra) {
+    // 计算每个constraint的cost
+    double cost = 0.0;
+    ceres::Problem::EvaluateOptions evaluate_options;
+    evaluate_options.residual_blocks = {id};
+    problem.Evaluate(
+    evaluate_options,
+    &cost, nullptr, nullptr, nullptr);
+    cost_after_intra.push_back(cost);
+  }
+
+  for (const auto& id : residual_block_ids_inter) {
+    // 计算每个constraint的cost
+    double cost = 0.0;
+    ceres::Problem::EvaluateOptions evaluate_options;
+    evaluate_options.residual_blocks = {id};
+    problem.Evaluate(
+    evaluate_options,
+    &cost, nullptr, nullptr, nullptr);
+    cost_after_inter.push_back(cost);
+  }
+
+  auto before_cost_sum = std::accumulate(
+      cost_before.begin(), cost_before.end(), 0.0);
+  auto after_cost_sum = std::accumulate(
+      cost_after.begin(), cost_after.end(), 0.0);
+  LOG(INFO) << "Cost before optimization: " << before_cost_sum
+            << ", after optimization: " << after_cost_sum
+            << ", diff is " << before_cost_sum - after_cost_sum;
+
+  auto before_cost_sum_intra = std::accumulate(
+      cost_before_intra.begin(), cost_before_intra.end(), 0.0);
+  auto after_cost_sum_intra = std::accumulate(
+      cost_after_intra.begin(), cost_after_intra.end(), 0.0);
+  LOG(INFO) << "Cost before optimization intra: " << before_cost_sum_intra
+            << ", after optimization: " << after_cost_sum_intra
+            << ", diff is " << before_cost_sum_intra - after_cost_sum_intra;  
+  auto before_cost_sum_inter = std::accumulate(
+      cost_before_inter.begin(), cost_before_inter.end(), 0.0);
+  auto after_cost_sum_inter = std::accumulate(
+      cost_after_inter.begin(), cost_after_inter.end(), 0.0);
+  LOG(INFO) << "Cost before optimization inter: " << before_cost_sum_inter
+            << ", after optimization: " << after_cost_sum_inter
+            << ", diff is " << before_cost_sum_inter - after_cost_sum_inter;
+
+  LOG(INFO) << "Cost after_cost_sum_intra + after_cost_sum_inter = "
+             << after_cost_sum_intra + after_cost_sum_inter
+             << ", after_cost_sum = " << after_cost_sum
+             << ", diff is "
+             << (after_cost_sum_intra + after_cost_sum_inter - after_cost_sum)
+             << ", residual_block_ids_intra size " << residual_block_ids_intra.size()
+             << ", residual_block_ids_inter size " << residual_block_ids_inter.size()
+             << " avg residual_block_ids_inter " << (after_cost_sum_inter / residual_block_ids_inter.size());
+  
+  // write avg residual_block_ids_inter to file
+  // std::ofstream outfile("avg_residual_block_ids_inter.txt", std::ios_base::app);
+  // if (outfile.is_open()) {
+  //   outfile << after_cost_sum_inter / residual_block_ids_inter.size() << "\n";
+  //   outfile.close();
+  // }
 
   // Store the result.
   for (const auto& C_submap_id_data : C_submaps) {
