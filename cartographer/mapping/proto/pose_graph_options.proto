@@ -65,4 +65,12 @@ message PoseGraphOptions {
   // Instantiates the 'OverlappingSubmapsTrimmer2d' which trims submaps from the
   // pose graph based on the area of overlap.
   OverlappingSubmapsTrimmerOptions2D overlapping_submaps_trimmer_2d = 11;
+
+  message CheckLocalizationLost {
+    bool check_localization_lost_enabled = 1;
+    int32 top_n_closest_submaps = 2;
+    double min_score = 3;
+  }
+
+  CheckLocalizationLost check_localization_lost = 12;
 }

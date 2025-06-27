@@ -85,6 +85,18 @@ void PopulateOverlappingSubmapsTrimmerOptions2D(
       options_dictionary->GetInt("min_added_submaps_count"));
 }
 
+proto::PoseGraphOptions::CheckLocalizationLost CreateCheckLocalizationLost(
+    common::LuaParameterDictionary* const parameter_dictionary) {
+  proto::PoseGraphOptions::CheckLocalizationLost options;
+  options.set_check_localization_lost_enabled(
+      parameter_dictionary->GetBool("check_localization_lost_enabled"));
+  options.set_top_n_closest_submaps(
+      parameter_dictionary->GetNonNegativeInt("top_n_closest_submaps"));
+  options.set_min_score(
+      parameter_dictionary->GetDouble("min_score"));
+  return options;
+}
+
 proto::PoseGraphOptions CreatePoseGraphOptions(
     common::LuaParameterDictionary* const parameter_dictionary) {
   proto::PoseGraphOptions options;
@@ -110,6 +122,10 @@ proto::PoseGraphOptions CreatePoseGraphOptions(
   options.set_global_constraint_search_after_n_seconds(
       parameter_dictionary->GetDouble(
           "global_constraint_search_after_n_seconds"));
+  options.mutable_check_localization_lost()->CopyFrom( 
+      CreateCheckLocalizationLost(
+          parameter_dictionary->GetDictionary("check_localization_lost").get()));
+      
   PopulateOverlappingSubmapsTrimmerOptions2D(&options, parameter_dictionary);
   return options;
 }

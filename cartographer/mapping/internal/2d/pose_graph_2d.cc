@@ -441,6 +441,108 @@ void PoseGraph2D::DeleteTrajectoriesIfNeeded() {
   }
 }
 
+void PoseGraph2D::RunCheckLocalizationLoss(){
+  if(options_.check_localization_lost().check_localization_lost_enabled()) // check_location_loss = true or false
+  {
+    // 1. get the lastest node
+    const auto& submap_data = optimization_problem_->submap_data();
+    const auto& node_data = optimization_problem_->node_data();
+    
+    const auto lastest_trajectory_id = std::prev(node_data.trajectory_ids().end());
+         // 获取最后一个轨迹id
+    if (node_data.SizeOfTrajectoryOrZero(*lastest_trajectory_id) == 0) {
+      LOG(WARNING) << "No nodes in the last trajectory.";
+      return;
+    }
+    NodeId lastest_node_id =
+        std::prev(node_data.EndOfTrajectory(*lastest_trajectory_id))->id;
+    LOG(INFO) << "Lastest node id: " << lastest_node_id.trajectory_id << ":"
+              << lastest_node_id.node_index;
+
+    // 2. get the top 3 closest submap in tracjectory id 0 
+    std::vector<std::pair<SubmapId, double>> submap_distances;
+    int tracjectory_id = 0; // we only check trajectory 0, because create map on trajectory 0
+    for(const auto& id_data : submap_data) {
+      if(id_data.id.trajectory_id != tracjectory_id) {
+        continue; // only check trajectory 0
+      }
+      const auto& submap_pose = id_data.data.global_pose; // 获取子图的全局位姿
+      const auto& lastest_node_pose =
+          node_data.at(lastest_node_id).global_pose_2d; // 获取最新节点的全局位姿
+      double distance = (submap_pose.translation() -
+                         lastest_node_pose.translation())
+                            .norm(); // 计算子图和最新节点之间的距离
+      submap_distances.emplace_back(id_data.id, distance);
+    }
+
+    for(const auto& submap_distance : submap_distances) {
+      LOG(INFO) << "Submap ID: " << submap_distance.first
+                << ", Distance to lastest node: " << submap_distance.second;
+    }
+
+    // Sort the submaps by distance to the lastest node
+    std::sort(submap_distances.begin(), submap_distances.end(),
+              [](const std::pair<SubmapId, double>& a,
+                 const std::pair<SubmapId, double>& b) {
+                return a.second < b.second;
+              });
+    
+    // Get the top 3 closest submaps
+    int top_n = options_.check_localization_lost().top_n_closest_submaps(); // get top 3 closest submaps
+    std::vector<SubmapId> closest_submaps;
+    for (size_t i = 0; i < std::min<size_t>(top_n, submap_distances.size());
+         ++i) {
+      closest_submaps.push_back(submap_distances[i].first);
+    }
+
+    LOG(INFO) << "Closest submaps to the lastest node:";
+    for (const auto& submap_id : closest_submaps) {
+      LOG(INFO) << "Closest Submap ID: " << submap_id.trajectory_id << ":"
+                << submap_id.submap_index;
+    }
+
+    // 3. calculate the similarity between the lastest node and the nearest submap
+    //    if the similarity is lower than a threshold, then we consider that the
+    //    location is lost
+    double similarity_threshold = options_.check_localization_lost().min_score(); // set score threshold, this get from yaml config
+    std::unordered_map<int, float> submap_scores; // 存储子图的相似度分数
+    auto all_score_small = std::all_of(closest_submaps.begin(), closest_submaps.end(),
+                  [&](const SubmapId& submap_id) {
+                    // 计算子图和最新节点之间的相似度
+                    const Submap2D* submap = static_cast<const Submap2D*>(
+                        data_.submap_data.at(submap_id).submap.get());
+                    const TrajectoryNode::Data* constant_data =
+                        data_.trajectory_nodes.at(lastest_node_id).constant_data.get();
+                    const auto & node =
+                        optimization_problem_->node_data().at(lastest_node_id);
+                    const transform::Rigid2d& relative_pose = optimization_problem_->submap_data()
+                        .at(submap_id)
+                        .global_pose.inverse() *
+                        node.global_pose_2d;
+                    float score = constraint_builder_.ComputeSimilarityScore(
+                        submap_id, submap, lastest_node_id, relative_pose, constant_data);
+                    // scores.push_back(score);
+                    submap_scores[submap_id.submap_index] = score; // 存储子图的相似度分数
+                    if (std::isnan(score) or score < similarity_threshold) {
+                      return true; // bad localization
+                    }
+                    return false;
+                  });
+    if( all_score_small ) {
+      LOG(INFO) << "Localization loss detected! "
+                   << "Lastest node id: " << lastest_node_id
+                   << ", Closest submaps: " << closest_submaps.size();
+    }
+
+    for( const auto& score : submap_scores ) {
+      LOG(INFO)<< "Submap ID: " << score.first
+               << ", Score: " << score.second;
+    }
+      // 4. do something, like reset the pose graph or notify the user
+    trajectory_localization_lost_[lastest_node_id.trajectory_id] = all_score_small;
+  }
+}
+
 void PoseGraph2D::HandleWorkQueue(
     const constraints::ConstraintBuilder2D::Result& result) {
   {
@@ -449,6 +551,15 @@ void PoseGraph2D::HandleWorkQueue(
                              result.end());
   }
   RunOptimization();
+
+  auto start_time = std::chrono::steady_clock::now();
+  RunCheckLocalizationLoss();
+  auto end_time = std::chrono::steady_clock::now();
+  LOG(INFO) << "Check localization loss took "
+            << std::chrono::duration_cast<std::chrono::milliseconds>(
+                   end_time - start_time)
+                   .count()
+            << " ms";
 
   if (global_slam_optimization_callback_) {
     std::map<int, NodeId> trajectory_id_to_last_optimized_node_id;

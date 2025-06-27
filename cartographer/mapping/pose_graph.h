@@ -40,6 +40,8 @@
 
 namespace cartographer {
 namespace mapping {
+proto::PoseGraphOptions::CheckLocalizationLost CreateCheckLocalizationLost(
+    common::LuaParameterDictionary* const parameter_dictionary);
 
 proto::PoseGraphOptions CreatePoseGraphOptions(
     common::LuaParameterDictionary* const parameter_dictionary);
@@ -134,6 +136,15 @@ class PoseGraph : public PoseGraphInterface {
                                         int to_trajectory_id,
                                         const transform::Rigid3d& pose,
                                         const common::Time time) = 0;
+
+  virtual bool IsTrajectoryLocalizationLost(int trajectory_id) { 
+    if(trajectory_localization_lost_.count(trajectory_id) != 0){
+      return trajectory_localization_lost_.at(trajectory_id);
+    } 
+    return false;
+  }
+
+  std::unordered_map<int, bool> trajectory_localization_lost_;
 };
 
 std::vector<PoseGraph::Constraint> FromProto(

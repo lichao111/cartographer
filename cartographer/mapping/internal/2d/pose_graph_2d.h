@@ -218,6 +218,8 @@ class PoseGraph2D : public PoseGraph {
   // optimization being run at a time.
   void RunOptimization() LOCKS_EXCLUDED(mutex_);
 
+  void RunCheckLocalizationLoss() LOCKS_EXCLUDED(mutex_);
+
   bool CanAddWorkItemModifying(int trajectory_id)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 

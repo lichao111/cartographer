@@ -342,6 +342,36 @@ void ConstraintBuilder2D::RegisterMetrics(metrics::FamilyFactory* factory) {
   kNumSubmapScanMatchersMetric = num_matchers->Add({});
 }
 
+float ConstraintBuilder2D::ComputeSimilarityScore(
+    const SubmapId& submap_id, const Submap2D* const submap,
+    const NodeId& node_id, const transform::Rigid2d& initial_relative_pose,
+    const TrajectoryNode::Data* constant_data) {
+  absl::MutexLock locker(&mutex_);
+  const auto* submap_scan_matcher = // 创建一个子图匹配器， 也就是产生不同分辨率的地图
+      DispatchScanMatcherConstruction(submap_id, submap->grid());
+  if( !submap_scan_matcher) {
+    LOG(INFO) << "No scan matcher for submap " << submap_id
+                 << ", cannot compute similarity score.";
+    return std::numeric_limits<float>::quiet_NaN();
+  }
+  if (!submap_scan_matcher->fast_correlative_scan_matcher) {
+    LOG(INFO) << "No fast correlative scan matcher for submap " << submap_id
+                 << ", cannot compute similarity score.";
+    return std::numeric_limits<float>::quiet_NaN();
+  }
+  float score = 0.;
+  transform::Rigid2d pose_estimate = transform::Rigid2d::Identity(); 
+  if (submap_scan_matcher->fast_correlative_scan_matcher->Match(
+          initial_relative_pose,
+          constant_data->filtered_gravity_aligned_point_cloud,
+          options_.min_score(), &score, &pose_estimate)) {
+    return score;
+  }
+  LOG(INFO) << "submap " << submap_id << " and node " << node_id << "."
+               << " No match found, cannot compute similarity score.";
+  return std::numeric_limits<float>::quiet_NaN();
+}
+
 }  // namespace constraints
 }  // namespace mapping
 }  // namespace cartographer

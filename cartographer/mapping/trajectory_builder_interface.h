@@ -60,6 +60,7 @@ class TrajectoryBuilderInterface {
       std::function<void(int /* trajectory ID */, common::Time,
                          transform::Rigid3d /* local pose estimate */,
                          sensor::RangeData /* in local frame */,
+                         bool /* is localization_lost */,
                          std::unique_ptr<const InsertionResult>)>;
 
   struct SensorId {

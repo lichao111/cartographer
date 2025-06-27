@@ -106,6 +106,13 @@ class ConstraintBuilder2D {
 
   static void RegisterMetrics(metrics::FamilyFactory* family_factory);
 
+  float ComputeSimilarityScore(
+    const SubmapId& submap_id,  const Submap2D* const submap,
+    const NodeId& node_id, 
+    const transform::Rigid2d& initial_relative_pose,
+    const TrajectoryNode::Data* constant_data)
+    LOCKS_EXCLUDED(mutex_);
+
  private:
   struct SubmapScanMatcher {
     const Grid2D* grid = nullptr;

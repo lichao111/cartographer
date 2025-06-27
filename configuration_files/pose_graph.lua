@@ -92,4 +92,10 @@ POSE_GRAPH = {
   --    min_covered_area = 2,
   --    min_added_submaps_count = 5,
   --  },
+  check_localization_lost = {
+    check_localization_lost_enabled = true,
+    top_n_closest_submaps = 3,
+    min_score = 0.7,
+  }
+  
 }

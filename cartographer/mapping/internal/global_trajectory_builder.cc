@@ -83,6 +83,7 @@ class GlobalTrajectoryBuilder : public mapping::TrajectoryBuilderInterface {
       local_slam_result_callback_(
           trajectory_id_, matching_result->time, matching_result->local_pose,
           std::move(matching_result->range_data_in_local),
+          pose_graph_->IsTrajectoryLocalizationLost(trajectory_id_),
           std::move(insertion_result));
     }
   }
